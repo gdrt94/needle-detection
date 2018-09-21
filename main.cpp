@@ -1,21 +1,36 @@
 #include <opencv2/opencv.hpp>
 #include <random>
+#include <iostream>
+
+#include <boost/thread/thread.hpp>
+#include <pcl/common/common_headers.h>
+#include <pcl/features/normal_3d.h>
+#include <pcl/io/pcd_io.h>
+#include <pcl/visualization/pcl_visualizer.h>
+#include <pcl/console/parse.h>
+
 using namespace cv;
 using namespace std;
+
+void visualise (const vector<Point2f>& needlePoints);
 
 int main()
 {
 
-//for(int index = 0; index < 128; index++) {
+vector<Point2f> boundingBoxPoints;
 
-    // Note: at 17 or 18 - appears, at 71 direction changes
-    int index = 62;
+// -----Working on B-scans starts here-----
+// decrease 69 for testing
+for(int index = 18; index < 25; index++) {
+
+    // Note: at 18 appears (at 17 needle cluster isn't even created), at 71 direction changes
+    // int index = 67;
 
     // check clustering at 18,70,71,72,107-110
     // TODO too many points in the retina, which reduces the chances of point selection in the needle part...
     // TODO ...possible solution assign the point with highest Y coord to be one of the centers
 
-   // RANSAC(1000) provides good results from 26 - 67 (ex.65)
+   // RANSAC(no_update_steps = 1000, deviation_pixels = 2/3) provides good results from 26 - 67 (ex.65)
 
     String indexStr = to_string(index);
     if (index < 10)
@@ -244,8 +259,8 @@ int main()
             covarianceMat.at<double>(1, 1) = 4.0 * (ellipsePoints[i].x * ellipsePoints[i].x +
                                                     ellipsePoints[i].y * ellipsePoints[i].y);
 
-            // Defining threshold for admissible deviation from the fitted ellipse (2 pixels)
-            double deviationThreshold = 2.0 * 2.0;
+            // Defining threshold for admissible deviation from the fitted ellipse (3 pixels)
+            double deviationThreshold = 3.0 * 3.0;
 
             // [SKIP] Dot product using matrix multiplication
             // [SKIP] Mat tempMattt;
@@ -330,7 +345,7 @@ int main()
     //Rect brect = rotatedRect.boundingRect();
     //rectangle(colorImage, brect, Scalar(255,0,0), 2);
 
-    // Finding midpoint of the lower line segment of the bounding box
+    // Finding midpoint of the lower line segment of the bounding box and adding it to the result
     float verticesYvalues[4];
     for (int i = 0; i < 4; ++i) {
         verticesYvalues[i] = vertices[i].y;
@@ -343,6 +358,7 @@ int main()
     Point2f midPointOfBBox((vertices[biggestIndex].x + vertices[secondBiggestIndex].x) / 2,
                            (vertices[biggestIndex].y + vertices[secondBiggestIndex].y) / 2);
     circle(colorImage, midPointOfBBox, 5, colorTab[3], FILLED, LINE_AA);
+    boundingBoxPoints.emplace_back(midPointOfBBox);
 
     // Highlighting the bounding box around inlier points and indicating the low segment midpoint of the bounding box
     namedWindow("Bounding boxes " + indexStr, WINDOW_NORMAL);
@@ -350,17 +366,148 @@ int main()
     imshow("Bounding boxes " + indexStr, colorImage);
 
     // Debug printing
-    cout << "'DEBUG' number of close points = " << mostNumberOfClosePoints << endl;
-    cout << "'DEBUG' overall steps = " << steps_temp << endl;
-    cout << "'DEBUG' best candidate = " << endl << " " << bestCandidate << endl;
+    // cout << "'DEBUG' number of close points = " << mostNumberOfClosePoints << endl;
+    // cout << "'DEBUG' overall steps = " << steps_temp << endl;
+    // cout << "'DEBUG' best candidate = " << endl << " " << bestCandidate << endl;
+    // cout << "'DEBUG' point " + indexStr + " " << midPointOfBBox.x << " " << midPointOfBBox.y << endl;
 
     waitKey(0);
+    // destroying windows opened for previous bmp file; maybe cvReleaseImage should also be used, but unlikely
+    destroyAllWindows();
+}
+// -----Working on B-scans starts here-----
+    visualise(boundingBoxPoints);
 
-//}
     return EXIT_SUCCESS;
 }
 
+boost::shared_ptr<pcl::visualization::PCLVisualizer> simpleVis (pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud)
+{
+    // --------------------------------------------
+    // -----Open 3D viewer and add point cloud-----
+    // --------------------------------------------
+    boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
+    viewer->setBackgroundColor (0, 0, 0);
+    viewer->addPointCloud<pcl::PointXYZ> (cloud, "sample cloud");
+    viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "sample cloud");
+    viewer->addCoordinateSystem (1.0);
+    viewer->initCameraParameters ();
+    return (viewer);
+}
 
+unsigned int text_id = 0;
+void keyboardEventOccurred (const pcl::visualization::KeyboardEvent &event,
+                            void* viewer_void)
+{
+    pcl::visualization::PCLVisualizer *viewer = static_cast<pcl::visualization::PCLVisualizer *> (viewer_void);
+    if (event.getKeySym () == "r" && event.keyDown ())
+    {
+        std::cout << "r was pressed => removing all text" << std::endl;
+
+        char str[512];
+        for (unsigned int i = 0; i < text_id; ++i)
+        {
+            sprintf (str, "text#%03d", i);
+            viewer->removeShape (str);
+        }
+        text_id = 0;
+    }
+}
+
+void mouseEventOccurred (const pcl::visualization::MouseEvent &event,
+                         void* viewer_void)
+{
+    pcl::visualization::PCLVisualizer *viewer = static_cast<pcl::visualization::PCLVisualizer *> (viewer_void);
+    if (event.getButton () == pcl::visualization::MouseEvent::LeftButton &&
+        event.getType () == pcl::visualization::MouseEvent::MouseButtonRelease)
+    {
+        std::cout << "Left mouse button released at position (" << event.getX () << ", " << event.getY () << ")" << std::endl;
+
+        char str[512];
+        sprintf (str, "text#%03d", text_id ++);
+        viewer->addText ("clicked here", event.getX (), event.getY (), str);
+    }
+}
+
+void visualise (const vector<Point2f>& needlePoints)
+{
+// ------------------------------------
+    // -----Create example point cloud-----
+    // ------------------------------------
+    pcl::PointCloud<pcl::PointXYZ>::Ptr basic_cloud_ptr (new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr point_cloud_ptr (new pcl::PointCloud<pcl::PointXYZRGB>);
+    std::cout << "Generating example point clouds.\n\n";
+    // We're going to make an ellipse extruded along the z-axis. The colour for
+    // the XYZRGB cloud will gradually go from red to green to blue.
+    uint8_t r(255), g(15), b(15);
+    for (float z(-1.0); z <= 1.0; z += 0.05)
+    {
+        for (float angle(0.0); angle <= 360.0; angle += 5.0)
+        {
+            pcl::PointXYZ basic_point;
+            basic_point.x = 0.5 * cosf (pcl::deg2rad(angle));
+            basic_point.y = sinf (pcl::deg2rad(angle));
+            basic_point.z = z;
+            basic_cloud_ptr->points.push_back(basic_point);
+
+            pcl::PointXYZRGB point;
+            point.x = basic_point.x;
+            point.y = basic_point.y;
+            point.z = basic_point.z;
+            uint32_t rgb = (static_cast<uint32_t>(r) << 16 |
+                            static_cast<uint32_t>(g) << 8 | static_cast<uint32_t>(b));
+            point.rgb = *reinterpret_cast<float*>(&rgb);
+            point_cloud_ptr->points.push_back (point);
+        }
+        if (z < 0.0)
+        {
+            r -= 12;
+            g += 12;
+        }
+        else
+        {
+            g -= 12;
+            b += 12;
+        }
+    }
+    basic_cloud_ptr->width = (int) basic_cloud_ptr->points.size ();
+    basic_cloud_ptr->height = 1;
+    point_cloud_ptr->width = (int) point_cloud_ptr->points.size ();
+    point_cloud_ptr->height = 1;
+
+    // ----------------------------------------------------------------
+    // -----Calculate surface normals with a search radius of 0.05-----
+    // ----------------------------------------------------------------
+    pcl::NormalEstimation<pcl::PointXYZRGB, pcl::Normal> ne;
+    ne.setInputCloud (point_cloud_ptr);
+    pcl::search::KdTree<pcl::PointXYZRGB>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZRGB> ());
+    ne.setSearchMethod (tree);
+    pcl::PointCloud<pcl::Normal>::Ptr cloud_normals1 (new pcl::PointCloud<pcl::Normal>);
+    ne.setRadiusSearch (0.05);
+    ne.compute (*cloud_normals1);
+
+    // ---------------------------------------------------------------
+    // -----Calculate surface normals with a search radius of 0.1-----
+    // ---------------------------------------------------------------
+    pcl::PointCloud<pcl::Normal>::Ptr cloud_normals2 (new pcl::PointCloud<pcl::Normal>);
+    ne.setRadiusSearch (0.1);
+    ne.compute (*cloud_normals2);
+
+    boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer;
+    viewer = simpleVis(basic_cloud_ptr);
+
+    //--------------------
+    // -----Main loop-----
+    //--------------------
+    while (!viewer->wasStopped ())
+    {
+        viewer->spinOnce (100);
+        boost::this_thread::sleep (boost::posix_time::microseconds (100000));
+    }
+}
+
+
+// Unused
 int old () {
     String path = "/home/gudrat/Documents/cluster-and-fit/img/035.bmp";
     Mat grayImage = imread(path, IMREAD_GRAYSCALE);
