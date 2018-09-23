@@ -12,16 +12,18 @@
 using namespace cv;
 using namespace std;
 
-void visualise (const vector<Point2f>& needlePoints);
+void visualise (const vector<Point2f>& needlePoints, vector<int> indices);
 
 int main()
 {
 
 vector<Point2f> boundingBoxPoints;
+vector<int> indices;
+bool presentation_mode = false;
 
 // -----Working on B-scans starts here-----
 // decrease 69 for testing
-for(int index = 18; index < 25; index++) {
+for(int index = 18; index < 69; index++) {
 
     // Note: at 18 appears (at 17 needle cluster isn't even created), at 71 direction changes
     // int index = 67;
@@ -83,9 +85,11 @@ for(int index = 18; index < 25; index++) {
     }
 
     // Displaying points of interest
-    namedWindow("Color image " + indexStr, WINDOW_NORMAL);
-    resizeWindow("Color image " + indexStr, 384, 768);
-    imshow("Color image " + indexStr, colorImage);
+    if (presentation_mode) {
+        namedWindow("Color image " + indexStr, WINDOW_NORMAL);
+        resizeWindow("Color image " + indexStr, 384, 768);
+        imshow("Color image " + indexStr, colorImage);
+    }
 
     // Performing clustering
     Mat centers;
@@ -120,11 +124,15 @@ for(int index = 18; index < 25; index++) {
         int clusterIdx = labels[i]; // labels.at<int>(i); commented code is obsolete; I used it when "labels" was of type Mat
         pointsPerClass[labels[i]]++;
         Point ipt = clusterPoints[i];
-        circle(colorImage, ipt, 2, colorTab[clusterIdx], FILLED, LINE_AA );
+        if (presentation_mode) {
+            circle(colorImage, ipt, 2, colorTab[clusterIdx], FILLED, LINE_AA);
+        }
     }
-    namedWindow("Clusters " + indexStr, WINDOW_NORMAL);
-    resizeWindow("Clusters " + indexStr, 384, 768);
-    imshow("Clusters " + indexStr, colorImage);
+    if (presentation_mode) {
+        namedWindow("Clusters " + indexStr, WINDOW_NORMAL);
+        resizeWindow("Clusters " + indexStr, 384, 768);
+        imshow("Clusters " + indexStr, colorImage);
+    }
 
     // Selecting ellipse cluster; TODO currently simply defined, later make the ellipse cluster the one which is in center
     int ellipseClusterIndex = -1;
@@ -147,12 +155,16 @@ for(int index = 18; index < 25; index++) {
                 Point ipt = clusterPoints[i];
                 // For numerical accuracy defining the image center as the origin, so that when multiplying x and y, we don't get too big numbers
                 ellipsePoints.emplace_back(ipt.x - 256, ipt.y - 512);
-                circle(colorImage, ipt, 2, colorTab[clusterIdx], FILLED, LINE_AA);
+                if (presentation_mode) {
+                    circle(colorImage, ipt, 2, colorTab[clusterIdx], FILLED, LINE_AA);
+                }
             }
         }
-        namedWindow("Ellipse cluster " + indexStr, WINDOW_NORMAL);
-        resizeWindow("Ellipse cluster " + indexStr, 384, 768);
-        imshow("Ellipse cluster " + indexStr, colorImage);
+        if (presentation_mode) {
+            namedWindow("Ellipse cluster " + indexStr, WINDOW_NORMAL);
+            resizeWindow("Ellipse cluster " + indexStr, 384, 768);
+            imshow("Ellipse cluster " + indexStr, colorImage);
+        }
     } else {
         return EXIT_FAILURE;
     }
@@ -325,11 +337,13 @@ for(int index = 18; index < 25; index++) {
     double centerX = - (B * centerY + f0 * D) / A;
 
     // Highlighting the ellipse center on the image
-    Point ellipseCenter((int)round(centerX) + 256, (int)round(centerY) + 512);
-    circle(colorImage, ellipseCenter, 2, colorTab[2], FILLED, LINE_AA);
-    namedWindow("Highlighting after outlier removal " + indexStr, WINDOW_NORMAL);
-    resizeWindow("Highlighting after outlier removal " + indexStr, 384, 768);
-    imshow("Highlighting after outlier removal " + indexStr, colorImage);
+    if (presentation_mode) {
+        Point ellipseCenter((int) round(centerX) + 256, (int) round(centerY) + 512);
+        circle(colorImage, ellipseCenter, 2, colorTab[2], FILLED, LINE_AA);
+        namedWindow("Highlighting after outlier removal " + indexStr, WINDOW_NORMAL);
+        resizeWindow("Highlighting after outlier removal " + indexStr, 384, 768);
+        imshow("Highlighting after outlier removal " + indexStr, colorImage);
+    }
     // ----- Non-useful section ends here -----
 
 
@@ -357,26 +371,30 @@ for(int index = 18; index < 25; index++) {
 
     Point2f midPointOfBBox((vertices[biggestIndex].x + vertices[secondBiggestIndex].x) / 2,
                            (vertices[biggestIndex].y + vertices[secondBiggestIndex].y) / 2);
-    circle(colorImage, midPointOfBBox, 5, colorTab[3], FILLED, LINE_AA);
     boundingBoxPoints.emplace_back(midPointOfBBox);
+    indices.emplace_back(index);
 
     // Highlighting the bounding box around inlier points and indicating the low segment midpoint of the bounding box
-    namedWindow("Bounding boxes " + indexStr, WINDOW_NORMAL);
-    resizeWindow("Bounding boxes " + indexStr, 384, 768);
-    imshow("Bounding boxes " + indexStr, colorImage);
+    if (presentation_mode) {
+        circle(colorImage, midPointOfBBox, 5, colorTab[3], FILLED, LINE_AA);
+        namedWindow("Bounding boxes " + indexStr, WINDOW_NORMAL);
+        resizeWindow("Bounding boxes " + indexStr, 384, 768);
+        imshow("Bounding boxes " + indexStr, colorImage);
 
-    // Debug printing
-    // cout << "'DEBUG' number of close points = " << mostNumberOfClosePoints << endl;
-    // cout << "'DEBUG' overall steps = " << steps_temp << endl;
-    // cout << "'DEBUG' best candidate = " << endl << " " << bestCandidate << endl;
-    // cout << "'DEBUG' point " + indexStr + " " << midPointOfBBox.x << " " << midPointOfBBox.y << endl;
 
-    waitKey(0);
-    // destroying windows opened for previous bmp file; maybe cvReleaseImage should also be used, but unlikely
-    destroyAllWindows();
+        // Debug printing
+        // cout << "'DEBUG' number of close points = " << mostNumberOfClosePoints << endl;
+        // cout << "'DEBUG' overall steps = " << steps_temp << endl;
+        // cout << "'DEBUG' best candidate = " << endl << " " << bestCandidate << endl;
+        // cout << "'DEBUG' point " + indexStr + " " << midPointOfBBox.x << " " << midPointOfBBox.y << endl;
+
+        waitKey(0);
+        // destroying windows opened for previous bmp file; maybe cvReleaseImage should also be used, but unlikely
+        destroyAllWindows();
+    }
 }
 // -----Working on B-scans starts here-----
-    visualise(boundingBoxPoints);
+    visualise(boundingBoxPoints, indices);
 
     return EXIT_SUCCESS;
 }
@@ -390,6 +408,21 @@ boost::shared_ptr<pcl::visualization::PCLVisualizer> simpleVis (pcl::PointCloud<
     viewer->setBackgroundColor (0, 0, 0);
     viewer->addPointCloud<pcl::PointXYZ> (cloud, "sample cloud");
     viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "sample cloud");
+    viewer->addCoordinateSystem (1.0);
+    viewer->initCameraParameters ();
+    return (viewer);
+}
+
+boost::shared_ptr<pcl::visualization::PCLVisualizer> rgbVis (pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr cloud)
+{
+    // --------------------------------------------
+    // -----Open 3D viewer and add point cloud-----
+    // --------------------------------------------
+    boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
+    viewer->setBackgroundColor (0, 0, 0);
+    pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgb(cloud);
+    viewer->addPointCloud<pcl::PointXYZRGB> (cloud, rgb, "sample cloud");
+    viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 3, "sample cloud");
     viewer->addCoordinateSystem (1.0);
     viewer->initCameraParameters ();
     return (viewer);
@@ -429,25 +462,21 @@ void mouseEventOccurred (const pcl::visualization::MouseEvent &event,
     }
 }
 
-void visualise (const vector<Point2f>& needlePoints)
+void visualise (const vector<Point2f>& needlePoints, vector<int> indices)
 {
-// ------------------------------------
-    // -----Create example point cloud-----
-    // ------------------------------------
+    //  Creating point cloud
     pcl::PointCloud<pcl::PointXYZ>::Ptr basic_cloud_ptr (new pcl::PointCloud<pcl::PointXYZ>);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr point_cloud_ptr (new pcl::PointCloud<pcl::PointXYZRGB>);
-    std::cout << "Generating example point clouds.\n\n";
-    // We're going to make an ellipse extruded along the z-axis. The colour for
-    // the XYZRGB cloud will gradually go from red to green to blue.
+    std::cout << "Creating point clouds.\n\n";
+
+    float scaleFactor = 1.0f;
     uint8_t r(255), g(15), b(15);
-    for (float z(-1.0); z <= 1.0; z += 0.05)
+    for (int i = 0; i < needlePoints.size(); i++)
     {
-        for (float angle(0.0); angle <= 360.0; angle += 5.0)
-        {
             pcl::PointXYZ basic_point;
-            basic_point.x = 0.5 * cosf (pcl::deg2rad(angle));
-            basic_point.y = sinf (pcl::deg2rad(angle));
-            basic_point.z = z;
+            basic_point.x = needlePoints[i].x*(3.1441f/512/scaleFactor);
+            basic_point.y = needlePoints[i].y*(2.6672f/1024/scaleFactor);
+            basic_point.z = indices[i]*(3.0f/128);
             basic_cloud_ptr->points.push_back(basic_point);
 
             pcl::PointXYZRGB point;
@@ -458,47 +487,17 @@ void visualise (const vector<Point2f>& needlePoints)
                             static_cast<uint32_t>(g) << 8 | static_cast<uint32_t>(b));
             point.rgb = *reinterpret_cast<float*>(&rgb);
             point_cloud_ptr->points.push_back (point);
-        }
-        if (z < 0.0)
-        {
-            r -= 12;
-            g += 12;
-        }
-        else
-        {
-            g -= 12;
-            b += 12;
-        }
+
     }
-    basic_cloud_ptr->width = (int) basic_cloud_ptr->points.size ();
-    basic_cloud_ptr->height = 1;
+//    basic_cloud_ptr->width = (int) basic_cloud_ptr->points.size ();
+//    basic_cloud_ptr->height = 1;
     point_cloud_ptr->width = (int) point_cloud_ptr->points.size ();
     point_cloud_ptr->height = 1;
 
-    // ----------------------------------------------------------------
-    // -----Calculate surface normals with a search radius of 0.05-----
-    // ----------------------------------------------------------------
-    pcl::NormalEstimation<pcl::PointXYZRGB, pcl::Normal> ne;
-    ne.setInputCloud (point_cloud_ptr);
-    pcl::search::KdTree<pcl::PointXYZRGB>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZRGB> ());
-    ne.setSearchMethod (tree);
-    pcl::PointCloud<pcl::Normal>::Ptr cloud_normals1 (new pcl::PointCloud<pcl::Normal>);
-    ne.setRadiusSearch (0.05);
-    ne.compute (*cloud_normals1);
-
-    // ---------------------------------------------------------------
-    // -----Calculate surface normals with a search radius of 0.1-----
-    // ---------------------------------------------------------------
-    pcl::PointCloud<pcl::Normal>::Ptr cloud_normals2 (new pcl::PointCloud<pcl::Normal>);
-    ne.setRadiusSearch (0.1);
-    ne.compute (*cloud_normals2);
-
     boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer;
-    viewer = simpleVis(basic_cloud_ptr);
+    //viewer = simpleVis(basic_cloud_ptr);
+    viewer = rgbVis(point_cloud_ptr);
 
-    //--------------------
-    // -----Main loop-----
-    //--------------------
     while (!viewer->wasStopped ())
     {
         viewer->spinOnce (100);
@@ -533,6 +532,7 @@ int old () {
 }
 
 void printingStuff() {
+
     cout << "double:" << endl;
     cout << "min: " << numeric_limits<float>::min() << endl;
     cout << "max: " << numeric_limits<float>::max() << endl;
